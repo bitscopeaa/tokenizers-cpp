@@ -4,7 +4,7 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "start": "parcel src/index.html --port 8888"
+        "start": "parcel src/index.html --port 10020"
     },
     "browser": {},
     "devDependencies": {

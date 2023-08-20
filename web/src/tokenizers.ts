@@ -25,7 +25,7 @@ export class Tokenizer {
    * Call this function when we no longer needs to
    */
   dispose() {
-    this.handle.delete();
+      binding._free(this.handle);
   }
 
   /**
@@ -35,10 +35,18 @@ export class Tokenizer {
    * @returns The output tokens
    */
   encode(text: string): Int32Array {
-    const ids = this.handle.Encode(text);
-    const arr = binding.vecIntToView(ids).slice();
-    ids.delete();
-    return arr;
+	  console.log("encodetext="+text);
+	  const lengthPtr = binding._malloc(4);
+	  const outputPtr = binding._malloc(text.length);
+	  binding.stringToUTF8(text, outputPtr, text.length+1);
+	  const ids = binding._Encode(this.handle, outputPtr, text.length, lengthPtr);
+	  console.log("ids="+ids);
+	  const arrayLength = binding.getValue(lengthPtr, "i32");
+	  const intArray = new Int32Array(binding.HEAP32.buffer, ids, arrayLength);
+	  binding._free(lengthPtr);
+	  binding._free(outputPtr);
+	  binding._free(ids);
+	  return intArray;
   }
 
   /**
@@ -48,10 +56,15 @@ export class Tokenizer {
    * @returns The decoded string.
    */
   decode(ids: Int32Array): string {
-    const vec = binding.vecIntFromJSArray(ids);
-    const res = this.handle.Decode(vec).slice();
-    vec.delete();
-    return res;
+    const lengthPtr = binding._malloc(4);
+    const vec = binding._malloc(ids.byteLength);
+    binding.HEAP32.set(ids, vec>>2);
+    const res = binding._Decode(this.handle,vec, ids.length, lengthPtr);
+    const arrayLength = binding.getValue(lengthPtr, "i32");
+    const decodeResult= binding.UTF8ToString(res, arrayLength);
+    binding._free(vec);
+    binding._free(lengthPtr);
+    return decodeResult;
   }
 
   /**
@@ -62,7 +75,13 @@ export class Tokenizer {
    */
   static async fromJSON(json: ArrayBuffer): Promise<Tokenizer> {
     await asyncInitTokenizers();
-    return new Tokenizer(binding.Tokenizer.FromBlobJSON(json));
+    const jsonUint8Array = new Uint8Array(json);
+    const arrayBufferPtr = binding._malloc(jsonUint8Array.length);
+    binding.HEAPU8.set(new Uint8Array(json), arrayBufferPtr);
+
+    const handle = new Tokenizer(binding._FromBlobJSON(arrayBufferPtr, jsonUint8Array.length));
+    binding._free(arrayBufferPtr);
+    return handle
   }
 
   /**
@@ -79,8 +98,24 @@ export class Tokenizer {
       addedTokens = ""
   ) : Promise<Tokenizer> {
       await asyncInitTokenizers();
-      return new Tokenizer(
-        binding.Tokenizer.FromBlobByteLevelBPE(vocab, merges, addedTokens));
+
+       const jsonUint8ArrayVocab = new Uint8Array(vocab);
+       const arrayBufferVocabPtr = binding._malloc(jsonUint8ArrayVocab.length);
+       binding.HEAPU8.set(new Uint8Array(vocab), arrayBufferVocabPtr);
+
+       const jsonUint8ArrayMerges = new Uint8Array(merges);
+       const arrayBufferMergesPtr = binding._malloc(jsonUint8ArrayMerges.length);
+       binding.HEAPU8.set(new Uint8Array(merges), arrayBufferMergesPtr);
+       const outputPtr = binding._malloc(4);
+       binding.stringToUTF8(addedTokens, outputPtr, addedTokens.length+1);
+
+
+      const  handle = new Tokenizer(
+        binding._FromBlobByteLevelBPE(jsonUint8ArrayVocab, jsonUint8ArrayVocab.length, merges, outputPtr));
+	binding._free(arrayBufferVocabPtr);
+	binding._free(arrayBufferMergesPtr);
+	binding._free(outputPtr);
+	return handle;
   }
 
   /**
@@ -91,7 +126,13 @@ export class Tokenizer {
    */
    static async fromSentencePiece(model: ArrayBuffer) : Promise<Tokenizer> {
     await asyncInitTokenizers();
-      return new Tokenizer(
-        binding.Tokenizer.FromBlobSentencePiece(model));
+       const jsonUint8Array= new Uint8Array(model);
+       const arrayBufferPtr = binding._malloc(jsonUint8Array.length);
+       console.log("modellen="+jsonUint8Array.length);
+       binding.HEAPU8.set(new Uint8Array(model), arrayBufferPtr);
+       const handle = new Tokenizer(
+        binding._FromBlobSentencePiece(arrayBufferPtr, jsonUint8Array.length ));
+	binding._free(arrayBufferPtr);
+	return handle;
   }
 }
